@@ -1,0 +1,5 @@
+desc = "MurmurHash3 implementation in pure Julia"
+keywords = ["Strings", "Hashing"]
+license = "MIT"
+name = "MurmurHash3"
+repo = "https://github.com/JuliaString/MurmurHash3.jl.git"

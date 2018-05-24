@@ -1,6 +1,8 @@
-MIT License
+The MurmurHash3.jl package is licensed under the MIT "Expat" License:
 
-Copyright (c) 2018 Gandalf Software, Inc., Scott P. Jones
+Copyright (c) 2017-2018: Gandalf Software, Inc. (Scott Paul Jones)
+
+The Julia implementation of MurmurHash3 was based on [MurmurHash3](https://github.com/JuliaLang/julia/blob/master/src/support/MurmurHash3.c) by Austin Appleby, which was placed in the public domain.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +21,4 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
