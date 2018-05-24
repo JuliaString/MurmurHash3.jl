@@ -11,7 +11,7 @@ compile and run any of them on any platform, but your performance with the
 non-native version will be less than optimal.
 """
 module MurmurHash3
-export mmhash128, mmhash128_a, mmhash32
+export mmhash128_a, mmhash128_u, mmhash128_c, mmhash32
 
 @inline rotl(x::Unsigned, r) = (x << r) | (x >>> (sizeof(typeof(x))*8 - r))
 
@@ -129,7 +129,7 @@ end
 #-----------------------------------------------------------------------------
 
 # AbstractString MurmurHash3, converts to UTF-8 on the fly
-function mmhash128_8_a(str, seed::UInt32)
+function mmhash128_8_c(str::AbstractString, seed::UInt32)
     k1 = k2 = 0%UInt64
     h1 = h2 = seed%UInt64
     cnt = len = 0
@@ -160,21 +160,6 @@ function mmhash128_8_a(str, seed::UInt32)
     mhfin(len + cnt, h1, h2)
 end
 
-mmhash128_8(str::AbstractString, seed::UInt32) = mmhash128_8_a(str, seed)
-mmhash128(str::Union{String, Str}, seed::UInt32) =
-    @preserve str mmhash128(sizeof(str), pointer(str), seed)
-
-is_aligned(pnt::Ptr) = (reinterpret(UInt, pnt) & (sizeof(UInt) - 1)%UInt) == 0
-
-# Check alignment of substrings first
-function mmhash128(str::SubString, seed::UInt32)
-    @preserve str begin
-        siz = sizeof(str)
-        pnt = pointer(str)
-        is_aligned(pnt) ? mmhash128(siz, pnt, seed) : mmhash128_u(siz, pnt, seed)
-    end
-end
-
 #----------------------------------------------------------------------------
 
 # Note: this is designed to work on the Str/String types, where I know in advance that
@@ -183,7 +168,7 @@ end
 
 @inline mask_load(pnt, left) = unsafe_load(pnt) & ((1%UInt64 << ((left & 7) << 3)) - 0x1)
 
-function mmhash128_8(len, pnt, seed::UInt32)
+function mmhash128_8_a(len::Integer, pnt::Ptr, seed::UInt32)
     pnt8, h1, h2 = mhbody(len >>> 4, reinterpret(Ptr{UInt64}, pnt), seed%UInt64, seed%UInt64)
     if (left = len & 15) > 0
         h1 = mhtail1(h1, left < 8 ? mask_load(pnt8, left) : unsafe_load(pnt8))
@@ -192,7 +177,7 @@ function mmhash128_8(len, pnt, seed::UInt32)
     mhfin(len, h1, h2)
 end
 
-function mmhash128_8(seed)
+function mmhash128_8_a(seed::Integer)
     h1 = fmix(2*(seed%UInt64))
     h2 = fmix(3*(seed%UInt64))
     h1 + h2, h1 + 2*h2
@@ -208,7 +193,7 @@ end
 
 #----------------------------------------------------------------------------
 
-function mmhash128_8_u(len, unaligned_pnt, seed::UInt32)
+function mmhash128_8_u(len::Integer, unaligned_pnt::Ptr, seed::UInt32)
     # Should optimize handling of short (< 16 byte) unaligned strings
     ulp = reinterpret(UInt, unaligned_pnt)
     pnt = reinterpret(Ptr{UInt64}, ulp & ~(7%UInt64))
@@ -234,9 +219,9 @@ function mmhash128_8_u(len, unaligned_pnt, seed::UInt32)
     mhfin(len, h1, h2)
 end
 
-const mmhash128   = @static sizeof(Int) == 8 ? mmhash128_8   : mmhash128_4
-const mmhash128_a = @static sizeof(Int) == 8 ? mmhash128_8_a : mmhash128_4_a
-const mmhash128_u = @static sizeof(Int) == 8 ? mmhash128_8_u : mmhash128_4_u
+const mmhash128_c = @static sizeof(Int) == 8 ? mmhash128_8_c : mmhash128_4
+const mmhash128_a = @static sizeof(Int) == 8 ? mmhash128_8_a : mmhash128_4
+const mmhash128_u = @static sizeof(Int) == 8 ? mmhash128_8_c : mmhash128_4 # Todo: fix unaligned
 
 #----------------------------------------------------------------------------
 
@@ -295,7 +280,7 @@ end
 
 # Calculate MurmurHash for 32-bit platforms
 
-# Constants for mmash128_4
+# Constants for mmhash128_4
 const e1 = 0x239b961b
 const e2 = 0xab0e9789
 const e3 = 0x38b34ae5
@@ -382,3 +367,5 @@ end
         end
     end
 end
+
+end # module MurmurHash3

@@ -27,7 +27,7 @@ matrix:
 
 ## uncomment the following lines to override the default test script
 script:
-  - julia -e 'VERSION < v"0.7.0-DEV" ? (clone = Pkg.clone) : (using Pkg; clone = Pkg.add); d="https://github.com/JuliaString" ; clone(pwd()); Pkg.test("MurmurHash3"; coverage=true)'
+  - julia -e 'if VERSION < v"0.7.0-DEV" ; Pkg.clone(pwd()) ; else ; using Pkg; Pkg.add(pwd()); end ; Pkg.test("MurmurHash3"; coverage=true)'
 after_success:
   # push coverage results to Coveralls
   - julia -e 'VERSION < v"0.7.0-DEV" || (using Pkg); cd(Pkg.dir("MurmurHash3")); Pkg.add("Coverage"); using Coverage; Coveralls.submit(Coveralls.process_folder())'
