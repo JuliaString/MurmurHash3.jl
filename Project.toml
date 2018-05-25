@@ -3,3 +3,5 @@ keywords = ["Strings", "Hashing"]
 license = "MIT"
 name = "MurmurHash3"
 repo = "https://github.com/JuliaString/MurmurHash3.jl.git"
+uuid = "f0d41675-b40b-4ac0-9c24-1938651d8492"
+version = "0.1.0"
