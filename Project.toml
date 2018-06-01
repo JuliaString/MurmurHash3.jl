@@ -3,7 +3,8 @@ desc = "MurmurHash3 implementation in pure Julia"
 keywords = ["Strings", "Hashing"]
 license = "MIT"
 name = "MurmurHash3"
-repo-rev = ""
-repo-url = "https://github.com/JuliaString/MurmurHash3.jl.git"
 uuid = "f0d41675-b40b-4ac0-9c24-1938651d8492"
-version = "0.1.0"
+
+[deps]
+Pkg  = "fe1c5a76-5840-53d2-82f9-288dd83ce2ce"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
