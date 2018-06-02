@@ -12,7 +12,11 @@ p1 = SubString("--hello--",3,7)
 p2 = "hello"
 
 mmhash(str::String) = mmhash128_a(sizeof(str), pointer(str), 0%UInt32)
-mmhashc(str::AbstractString) = mmhash128_c(str, 0%UInt32)
+@static if sizeof(Int) == 8
+    mmhashc(str::AbstractString) = mmhash128_c(str, 0%UInt32)
+else
+    mmhashc(str::AbstractString) = (s = string(str); mmhash128_c(sizeof(s), pointer(s), 0%UInt32))
+end
 memhash(str) = _memhash(sizeof(str), pointer(str), 0%UInt32)
 
 @testset "MurmurHash3" begin

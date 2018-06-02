@@ -219,10 +219,6 @@ function mmhash128_8_u(len::Integer, unaligned_pnt::Ptr, seed::UInt32)
     mhfin(len, h1, h2)
 end
 
-const mmhash128_c = @static sizeof(Int) == 8 ? mmhash128_8_c : mmhash128_4
-const mmhash128_a = @static sizeof(Int) == 8 ? mmhash128_8_a : mmhash128_4
-const mmhash128_u = @static sizeof(Int) == 8 ? mmhash128_8_c : mmhash128_4 # Todo: fix unaligned
-
 #----------------------------------------------------------------------------
 
 @inline xor16(k::UInt32) = xor(k, k >>> 16)
@@ -307,12 +303,12 @@ end
 function mmhash128_4(len, pnt, seed::UInt32)
     pnt, h1, h2, h3, h4 = mhbody(len >>> 4, pnt, seed, seed, seed, seed)
     if (left = len & 15) != 0
-        h1  = xor(h1, rotl16(k1 * c1) * c2)
+        h1  = xor(h1, rotl16(unsafe_load(pnt) * e1) * e2)
         if left > 4
-            h2  = xor(h2, rotl16(k2 * c2) * c3)
+            h2  = xor(h2, rotl16(unsafe_load(pnt+4) * e2) * e3)
             if left > 8
-                h3  = xor(h3, rotl17(k3 * c3) * c4)
-                left > 12 && (h4  = xor(h4, rotl18(k4 * c4) * c1))
+                h3  = xor(h3, rotl17(unsafe_load(pnt+8) * e3) * e4)
+                left > 12 && (h4  = xor(h4, rotl18(unsafe_load(pnt+12) * e4) * e1))
             end
         end
     end
@@ -367,5 +363,9 @@ end
         end
     end
 end
+
+const mmhash128_c = @static sizeof(Int) == 8 ? mmhash128_8_c : mmhash128_4
+const mmhash128_a = @static sizeof(Int) == 8 ? mmhash128_8_a : mmhash128_4
+const mmhash128_u = @static sizeof(Int) == 8 ? mmhash128_8_c : mmhash128_4 # Todo: fix unaligned
 
 end # module MurmurHash3
