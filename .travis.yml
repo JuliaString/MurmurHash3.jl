@@ -26,8 +26,8 @@ git:
 #  - if [ $TRAVIS_OS_NAME = osx ]; then brew install gcc; fi
 
 ## uncomment the following lines to override the default test script
-script:
-  - julia -e 'if VERSION < v"0.7.0-DEV.5183" ; Pkg.clone(pwd()) ; else; Pkg.up(); end ; Pkg.test("MurmurHash3"; coverage=true)'
+#script:
+#  - julia -e 'if VERSION < v"0.7.0-DEV.5183" ; Pkg.clone(pwd()) ; else; Pkg.up(); end ; Pkg.test("MurmurHash3"; coverage=true)'
 after_success:
   # push coverage results to Coveralls
   - julia -e 'cd(Pkg.dir("MurmurHash3")); Pkg.add("Coverage"); using Coverage; Coveralls.submit(Coveralls.process_folder())'
