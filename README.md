@@ -32,3 +32,5 @@
 [coverall-m-url]: https://coveralls.io/github/JuliaString/MurmurHash3.jl?branch=master
 [coverall-s-img]: https://coveralls.io/repos/github/JuliaString/MurmurHash3.jl/badge.svg
 [coverall-m-img]: https://coveralls.io/repos/github/JuliaString/MurmurHash3.jl/badge.svg?branch=master
+
+Note: this is currently intended just for internal use by the JuliaString Str types.
