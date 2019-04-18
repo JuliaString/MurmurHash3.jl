@@ -4,7 +4,7 @@ keywords = ["Strings", "Hashing"]
 license = "MIT"
 name = "MurmurHash3"
 uuid = "b10b62ed-fbae-5ea5-b934-abaf0477b71d"
-version = "0.2.0"
+version = "1.0.0"
 
 [deps]
 
@@ -14,3 +14,5 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 [targets]
 test = ["Test"]
 
+[compat]
+julia = "^1.0.0"
