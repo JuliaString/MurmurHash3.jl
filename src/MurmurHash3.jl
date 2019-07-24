@@ -84,7 +84,7 @@ msk6(val) = u8(val & 0x3f)
 @inline get_utf8_2(ch) = (0xc0 | dn6(ch),  0x80 | msk6(ch))
 @inline get_utf8_3(ch) = (0xe0 | dn12(ch), 0x80 | msk6(dn6(ch)), 0x80 | msk6(ch))
 @inline get_utf8_4(ch) = (0xf0 | dn18(ch), 0x80 | msk6(dn12(ch)),
-                          0x80 | msk6(dn6(ch8)), 0x80 | msk6(ch))
+                          0x80 | msk6(dn6(ch)), 0x80 | msk6(ch))
 
 # Optimized in-place conversion to UTF-8 for hashing compatibly with isequal / String
 @inline shift_n(v, n) = u64(v) << (((n & 7)%UInt)<<3)
