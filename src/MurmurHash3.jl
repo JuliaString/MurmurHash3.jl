@@ -257,7 +257,7 @@ const d2 = 0x1b873593
 
 @inline fmix(h::UInt32) = xor16(xor13(xor16(h) * 0x85ebca6b) * 0xc2b2ae35)
 
-@inline mhblock(h1, k1) = rotl13(xor(h1, rotl15(k1 * d1) * d2))*5 + 0xe6546b64
+@inline mhblock(h1, k1) = u32(rotl13(xor(h1, rotl15(k1 * d1) * d2))*0x00005) + 0xe6546b64
 
 @inline function mhbody(nblocks, pnt, h1)
     for i = 1:nblocks
@@ -269,7 +269,11 @@ end
 
 function mmhash32(len, pnt, seed::UInt32)
     pnt, h1 = mhbody(len >>> 2, reinterpret(Ptr{UInt32}, pnt), seed)
-    (len & 3) == 0 || (h1 = xor(h1, rotl15(unsafe_load(pnt)) * d1) * d2)
+    res = len & 3
+    if res != 0
+        v = unsafe_load(pnt) & ifelse(res==1, 0x000ff, ifelse(res==2, 0x0ffff, 0xffffff))
+        h1 = xor(h1, rotl15(v) * d1) * d2
+    end
     fmix(xor(h1, u32(len)))
 end
 
@@ -319,6 +323,12 @@ end
     pnt, h1, h2, h3, h4
 end
 
+# degenerate case, hash for 0 length strings, based entirely on seed
+function mmhash128_4(seed::UInt32)
+    h = fmix(5*seed)*5
+    up32(h) | fmix(4*seed)*4, up32(h) | h
+end
+
 function mmhash128_4(len, pnt, seed::UInt32)
     pnt, h1, h2, h3, h4 = mhbody(len >>> 4, pnt, seed, seed, seed, seed)
     if (left = len & 15) != 0
@@ -334,7 +344,16 @@ function mmhash128_4(len, pnt, seed::UInt32)
     mhfin(len, h1, h2, h3, h4)
 end
 
+import Base.GC: @preserve
+
+# AbstractString MurmurHash3, converts to UTF-8 on the fly (not optimized yet!)
+function mmhash128_4(s::AbstractString, seed::UInt32)
+    str = string(s)
+    @preserve str mmhash128_4(sizeof(str), pointer(str), seed)
+end
+
 @inline shift_n_32(v, n) = u32(v) << (((n & 7)%UInt)<<3)
+
 
 @inline function get_utf8(cnt, ch)
     if ch <= 0x7f
