@@ -272,7 +272,7 @@ function mmhash32(len, pnt, seed::UInt32)
     res = len & 3
     if res != 0
         v = unsafe_load(pnt) & ifelse(res==1, 0x000ff, ifelse(res==2, 0x0ffff, 0xffffff))
-        h1 = xor(h1, rotl15(v) * d1) * d2
+        h1 = xor(h1, rotl15(v * d1) * d2)
     end
     fmix(xor(h1, u32(len)))
 end
