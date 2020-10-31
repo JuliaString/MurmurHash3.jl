@@ -43,7 +43,7 @@ Note that the hashes on 64-bit systems are *not* the same as on 32-bit systems
 (this works for `String`, as well as some of the `Str` types, such as `ASCIIStr`, `UTF8Str`, `Binary`, `Text1Str` can all be hashed directly)
 (note, there is no mmhash32_c yet, so other strings have to be converted to `String` type before hashing)
 
-Julia uses the following code:
+Julia uses the following code to create a hash using the C MurmurHash library:
 ```
 const memhash = UInt === UInt64 ? :memhash_seed : :memhash32_seed
 const memhash_seed = UInt === UInt64 ? 0x71e729fd56419c81 : 0x56419c81

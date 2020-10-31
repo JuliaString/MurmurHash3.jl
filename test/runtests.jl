@@ -17,9 +17,15 @@ mmhashc(str::AbstractString) = mmhash128_c(str, 0%UInt32)
 
 mh32(str) = mmhash32(sizeof(str), pointer(str), 0%UInt32)
 
+mmhashu(len, val::Unsigned) = mmhash128_a(len, val, 0%UInt32)
+
+load_u64(p) = unsafe_load(reinterpret(Ptr{UInt64}, pointer(p1)))
+
 @testset "MurmurHash3" begin
     @test mmhashc(p1) == mmhash(p2)
     @static if sizeof(Int) == 8
+        @test last(mmhashu(sizeof(p1), load_u64(p1))) == mh(p1)
+        @test last(mmhashu(sizeof(p2), load_u64(p2))) == mh(p2)
         @test last(mmhashc(p1)) == mh(p1)
         @test last(mmhashc(p2)) == mh(p2)
         @test last(mmhash(p2))  == mh(p1)
