@@ -30,4 +30,29 @@
 | [![][julia-release]][julia-url] | [![][travis-s-img]][travis-url] | [![][codecov-img]][codecov-url]
 | Julia Latest | [![][travis-m-img]][travis-url] | [![][codecov-img]][codecov-url]
 
-Note: this is currently intended just for internal use by the JuliaString Str types.
+Note: this can be used to replace the C MurmurHash library used by base Julia,
+to implement a `hash` function that gives compatible results.
+
+This provides the following functions (written in pure Julia):
+`mmhash128` which hashes a UTF-8 (or ASCII, which is compatible) string
+`mmhash128_c` which can be used to hash an generic abstract string (by converting to UTF-8 on the fly, without having to allocate the string, working a few characters at a time)
+Note that the hashes on 64-bit systems are *not* the same as on 32-bit systems
+(this is true for base Julia `hash` as well)
+
+`mmhash32` which creates a 32 bit hash from a UTF-8/ASCII string
+(this works for `String`, as well as some of the `Str` types, such as `ASCIIStr`, `UTF8Str`, `Binary`, `Text1Str` can all be hashed directly)
+(note, there is no mmhash32_c yet, so other strings have to be converted to `String` type before hashing)
+
+Julia uses the following code:
+```
+const memhash = UInt === UInt64 ? :memhash_seed : :memhash32_seed
+const memhash_seed = UInt === UInt64 ? 0x71e729fd56419c81 : 0x56419c81
+
+function hash(s::String, h::UInt)
+    h += memhash_seed
+    ccall(memhash, UInt, (Ptr{UInt8}, Csize_t, UInt32), s, sizeof(s), h % UInt32) + h
+end
+```
+similar code, such as that in `JuliaString/StrBase.jl/src/hash.jl`, implements the
+`hash` function for all of the `Str` types, but is specialized for performance based on the type of the string and whether or not it is aligned in memory.
+
