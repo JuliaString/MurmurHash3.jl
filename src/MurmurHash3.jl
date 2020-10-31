@@ -66,6 +66,57 @@ end
 
 #---------------------------------------------------------------------------
 
+# mmhash128_8 implementation for strings stored little-ending packed in an Unsigned value
+
+# simplified case for when length == 0
+@inline function mhfin(h1)
+    h2 = h1
+    h1 += h2
+    h2 += h1
+    h1 = fmix(h1)
+    h2 = fmix(h2)
+    h1 += h2
+    h1, h1 + h2
+end
+
+mask_val(val, left) = u64(val) & ((UInt64(1) << ((left & 7) << 3)) - 0x1)
+
+# For val that is stored in up to 128 bits, we handle it without any loops
+# len can only be 1-7 in this case
+_mmhash128(len::Integer, val::Union{UInt32,UInt64}, seed::UInt32) =
+    mhfin(len, mhtail1(u64(seed), mask_val(val, len)), u64(seed))
+
+# For val that is stored in up to 128 bits, we handle it without any loops
+# len can only be 1-15 in this case
+_mmhash128(len::Integer, val::UInt128, seed::UInt32) =
+    mhfin(len, mhtail1(u64(seed), len < 8 ? mask_val(val, len) : u64(val)),
+          len > 8 ? mhtail2(u64(seed), mask_val(val >> 64, len)) : u64(seed))
+
+@inline function mhbody(nblocks, val::Unsigned, h1, h2)
+    for i = 1:nblocks
+        h1, h2 = mhblock(h1, h2, u64(val), u64(val>>64))
+        val >>= 128
+    end
+    val, h1, h2
+end
+
+# Handle values that are more than 128 bits long
+function _mmhash128(len::Integer, val::Unsigned, seed::UInt32)
+    val, h1, h2 = mhbody(len >>> 4, val, u64(seed), u64(seed))
+    if (left = len & 15) > 0
+        h1 = mhtail1(h1, left < 8 ? mask_val(val, left) : u64(val))
+        left > 8 && (h2 = mhtail2(h2, mask_val(val >> 64, left)))
+    end
+    mhfin(len, h1, h2)
+end
+
+mmhash128_8_a(len::Integer, val::Unsigned, seed::UInt32) =
+    len === 0 ? mhfin(seed) : _mmhash128(len, val, seed)
+
+mmhash128_8_c(len::Integer, val::Unsigned, seed::UInt32) = mmhash128_8_a(len, val, seed)
+
+#---------------------------------------------------------------------------
+
 up8(val)  = u32(val) << 8
 up16(val) = u32(val) << 16
 up24(val) = u32(val) << 24
@@ -218,15 +269,12 @@ function mmhash128_8_u(len::Integer, unaligned_pnt::Ptr, seed::UInt32)
     pnt = reinterpret(Ptr{UInt64}, ulp & ~u64(7))
     fin = reinterpret(Ptr{UInt64}, (ulp + len + 0x7) & ~u64(7)) - 8
     shft = (ulp & u64(7))<<3
-    # println("_mmhash128_8_u($len, $unaligned_pnt, $seed) => $pnt, $fin")
     h1 = h2 = u64(seed)
     k1 = unsafe_load(pnt) # Pick up first 1-7 bytes
     k2 = u64(0)
     while pnt < fin
         k1, k2, k3 = shift_mix(shft, k1, unsafe_load(pnt += 8), unsafe_load(pnt += 8))
-        # print(" pnt=$pnt, k1=0x$(outhex(k1)), k2=0x$(outhex(k2))")
         h1, h2 = mhblock(h1, h2, k1, k2)
-        # println(" => h1=0x$(outhex(h1)), h2=0x$(outhex(h2))")
         k1 = k3
     end
     # We should now have characters in k1 and k2, and total length in len
@@ -234,7 +282,6 @@ function mmhash128_8_u(len::Integer, unaligned_pnt::Ptr, seed::UInt32)
         h1 = mhtail1(h1, k1)
         (len & 15) > 8 && (h2 = mhtail2(h2, k2))
     end
-    # println(" len=$len, h1=0x$(outhex(h1)), h2=0x$(outhex(h2))")
     mhfin(len, h1, h2)
 end
 
