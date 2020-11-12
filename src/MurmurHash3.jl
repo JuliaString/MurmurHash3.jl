@@ -189,7 +189,7 @@ end
         if (cnt & 7) == 5
             cnt + 4, k1 | up40(b1) | up48(b2) | up56(b3), u64(b4)
         elseif (cnt & 7) == 6
-            cnt + 4, k1 | up48(b1) | up56(b2), b3 | up8(b4)
+            cnt + 4, k1 | up48(b1) | up56(b2), u64(b3) | up8(b4)
         else
             cnt + 4, k1 | up56(b1), u64(b2) | up8(b3) | up16(b4)
         end
@@ -207,7 +207,7 @@ function mmhash128_8_c(str::AbstractString, seed::UInt32)
         if cnt < 5
             cnt, k1 = add_utf8(cnt, u32(ch), k1)
         elseif cnt < 8
-            cnt, k1, k2 = add_utf8_split(cnt, u32(ch), k1)
+            cnt, x1, x2 = add_utf8_split(cnt, u32(ch), k1)
         elseif cnt < 13
             cnt, k2 = add_utf8(cnt, u32(ch), k2)
         else
@@ -414,38 +414,6 @@ end
     else
         b1, b2, b3, b4 = get_utf8_4(ch)
         cnt + 4, mergebytes(b1, b2, b3, b4)
-    end
-end
-
-@inline function add_utf8_split(cnt, ch, k1::UInt32)
-    if ch <= 0x7f
-        cnt + 1, k1 | shift_n_32(ch, cnt), u32(0)
-    elseif ch <= 0x7ff
-        b1, b2 = get_utf8_2(ch)
-        if (cnt & 7) == 3
-            cnt + 2, k1 | up24(b1), u32(b2)
-        else
-            cnt + 2, k1 | shift_n_32(b1 | up8(b2), cnt), u32(0)
-        end
-    elseif ch <= 0xffff
-        b1, b2, b3 = get_utf8_3(ch)
-        if (cnt & 7) == 1
-            cnt + 3, k1 | up8(b1) | up16(b2) | up24(b3), u32(0)
-        elseif (cnt & 7) == 2
-            cnt + 3, mergebytes(k1, b1, b2), u32(b3)
-        else
-            cnt + 3, k1 | up24(b1), b2 | up8(b3)
-        end
-    else
-        # This will always go over, may be 1, 2, 3 bytes in second word
-        b1, b2, b3, b4 = get_utf8_4(ch)
-        if (cnt & 7) == 1
-            cnt + 4, mergebytes(k1, b1, b2, b3), u32(b4)
-        elseif (cnt & 7) == 2
-            cnt + 4, mergebytes(k1, b1, b2), b3 | up8(b4)
-        else
-            cnt + 4, k1 | up24(b1), mergebytes(b2, b3, b4)
-        end
     end
 end
 
