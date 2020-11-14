@@ -13,9 +13,10 @@ non-native version will be less than optimal.
 module MurmurHash3
 export mmhash128_a, mmhash128_u, mmhash128_c, mmhash32
 
-u8(val)  = val%UInt8
-u32(val) = val%UInt32
-u64(val) = val%UInt64
+u8(val)   = val%UInt8
+u32(val)  = val%UInt32
+u64(val)  = val%UInt64
+u128(val) = val%UInt128
 
 @inline rotl(x::Unsigned, r) = (x << r) | (x >>> (sizeof(typeof(x))*8 - r))
 
@@ -28,16 +29,26 @@ u64(val) = val%UInt64
 #-----------------------------------------------------------------------------
 # Finalization mix - force all bits of a hash block to avalanche
 
+export dbf
+const dbf = Ref(false)
+
 @inline fmix(k::UInt64) = xor33(xor33(xor33(k) * 0xff51afd7ed558ccd) * 0xc4ceb9fe1a85ec53)
 
 const c1 = 0x87c37b91114253d5
 const c2 = 0x4cf5ad432745937f
 
+@inline mhtail1(h1, k1) = xor(h1, rotl31(k1 * c1) * c2)
+@inline mhtail2(h2, k2) = xor(h2, rotl33(k2 * c2) * c1)
+
 @inline function mhblock(h1, h2, k1, k2)
-    h1 = (rotl27(xor(h1, rotl31(k1 * c1) * c2)) + h2) * 5 + 0x52dce729
-    h2 = (rotl31(xor(h2, rotl33(k2 * c2) * c1)) + h1) * 5 + 0x38495ab5
+    dbf[] && print("mhblock($(repr(h1)), $(repr(h2)), $(repr(k1)), $(repr(k2))) => ")
+    h1 = (rotl27(mhtail1(h1, k1)) + h2) * 5 + 0x52dce729
+    h2 = (rotl31(mhtail2(h2, k2)) + h1) * 5 + 0x38495ab5
+    dbf[] && println(repr(h1), ", ", repr(h2))
     h1, h2
 end
+
+@inline mhblock(h1, h2, k1) = mhblock(h1, h2, u64(k1), u64(k1 >>> 64))
 
 @inline function mhbody(nblocks, pnt, h1, h2)
     for i = 1:nblocks
@@ -47,10 +58,8 @@ end
     pnt, h1, h2
 end
 
-@inline mhtail1(h1, k1) = xor(h1, rotl31(k1 * c1) * c2)
-@inline mhtail2(h2, k2) = xor(h2, rotl33(k2 * c2) * c1)
-
 @inline function mhfin(len, h1, h2)
+    dbf[] && print("mhfin($len, $(repr(h1)), $(repr(h2))) => ")
     h1 = xor(h1, u64(len))
     h2 = xor(h2, u64(len))
 
@@ -61,6 +70,7 @@ end
     h2 = fmix(h2)
 
     h1 += h2
+    dbf[] && println(repr(h1), ", ", repr(h1 + h2))
     h1, h1 + h2
 end
 
@@ -94,8 +104,8 @@ _mmhash128(len::Integer, val::UInt128, seed::UInt32) =
 
 @inline function mhbody(nblocks, val::Unsigned, h1, h2)
     for i = 1:nblocks
-        h1, h2 = mhblock(h1, h2, u64(val), u64(val>>64))
-        val >>= 128
+        h1, h2 = mhblock(h1, h2, u64(val), u64(val>>>64))
+        val >>>= 128
     end
     val, h1, h2
 end
@@ -125,6 +135,10 @@ up40(val) = u64(val) << 40
 up48(val) = u64(val) << 48
 up56(val) = u64(val) << 56
 
+up13b(val) = u128(val) << 104
+up14b(val) = u128(val) << 112
+up15b(val) = u128(val) << 120
+
 dn6(val) = u8(val >>> 6)
 dn12(val) = u8(val >>> 12)
 dn18(val) = u8(val >>> 18)
@@ -132,91 +146,103 @@ dn18(val) = u8(val >>> 18)
 msk6(val) = u8(val & 0x3f)
 
 # Support functions for UTF-8 handling
-@inline get_utf8_2(ch) = (0xc0 | dn6(ch),  0x80 | msk6(ch))
-@inline get_utf8_3(ch) = (0xe0 | dn12(ch), 0x80 | msk6(dn6(ch)), 0x80 | msk6(ch))
-@inline get_utf8_4(ch) = (0xf0 | dn18(ch), 0x80 | msk6(dn12(ch)),
-                          0x80 | msk6(dn6(ch)), 0x80 | msk6(ch))
+@inline get_utf8_2(ch) = 0x000080c0 | dn6(ch) | up8(msk6(ch))
+@inline get_utf8_3(ch) = 0x008080e0 | dn12(ch) | up8(msk6(dn6(ch))) | up16(msk6(ch))
+@inline get_utf8_4(ch) =
+    0x808080f0 | dn18(ch) | up8(msk6(dn12(ch))) | up16(msk6(dn6(ch))) | up24(msk6(ch))
 
 # Optimized in-place conversion to UTF-8 for hashing compatibly with isequal / String
-@inline shift_n(v, n) = u64(v) << (((n & 7)%UInt)<<3)
+@inline shift_n(v, n) = u128(v) << (n<<3)
 
 # if cnt == 0 - 4, bytes must fit in k1
 # cnt between 5 - 8, may overflow into k2
 # if l == 8 - 12,  bytes must fit in k2
 # cnt between 12 - 15, may overflow into k3
 
-mergebytes(b1, b2)         = b1 | up8(b2)
-mergebytes(b1, b2, b3)     = b1 | up8(b2) | up16(b3)
-mergebytes(b1, b2, b3, b4) = b1 | up8(b2) | up16(b3) | up24(b4)
+@inline function add_utf8(cnt, ch::Char, k1::UInt128)
+    v = bswap(reinterpret(UInt32, ch))
+    (cnt + ifelse(v < 0x80, 1, ifelse((v & 0xff) < 0xe0, 2, 3 + ((v & 0xff) >= 0xf0))),
+     k1 | shift_n(v, cnt))
+end
 
-@inline function add_utf8(cnt, ch, k1::UInt64)
+@inline function add_utf8_split(cnt, ch::Char, k1::UInt128)
+    v = bswap(reinterpret(UInt32, ch))
+    v < 0x80 && return cnt + 1, k1 | shift_n(ch, cnt), u64(0)
+    if (v & 0xff) < 0xe0
+        nc = cnt + 2
+        v1, v2 = cnt == 15 ? (up15b(v), u64(v) >>> 8) : (shift_n(v, cnt), u64(0))
+    else 
+        nc = cnt + 3 + ((v & 0xff) >= 0xf0)
+        v1, v2 = cnt == 13 ? (up13b(v), u64(v) >>> 24) :
+            cnt == 14 ? (up14b(v), u64(v) >>> 16) :
+            (up15b(v), u64(v) >>> 8)
+    end
+    return (nc, k1 | v1, v2)
+end
+
+@inline function add_utf8(cnt, chr, k1::UInt128)
+    ch = u32(chr)
+    dbf[] && println("add_utf($cnt, $(repr(ch)), $(repr(k1))")
     if ch <= 0x7f
         cnt + 1, k1 | shift_n(ch, cnt)
     elseif ch <= 0x7ff
-        b1, b2 = get_utf8_2(ch)
-        cnt + 2, k1 | shift_n(mergebytes(b1, b2), cnt)
+        cnt + 2, k1 | shift_n(get_utf8_2(ch), cnt)
     elseif ch <= 0xffff
-        b1, b2, b3 = get_utf8_3(ch)
-        cnt + 3, k1 | shift_n(mergebytes(b1, b2, b3), cnt)
+        cnt + 3, k1 | shift_n(get_utf8_3(ch), cnt)
     else
-        b1, b2, b3, b4 = get_utf8_4(ch)
-        cnt + 4, k1 | shift_n(mergebytes(b1, b2, b3, b4), cnt)
+        cnt + 4, k1 | shift_n(get_utf8_4(ch), cnt)
     end
 end
 
-@inline function add_utf8_split(cnt, ch, k1::UInt64)
-    if ch <= 0x7f
-        cnt + 1, k1 | shift_n(ch, cnt), u64(0)
-    elseif ch <= 0x7ff
-        b1, b2 = get_utf8_2(ch)
-        if (cnt & 7) == 7
-            cnt + 2, k1 | up56(b1), u64(b2)
-        else
-            cnt + 2, k1 | shift_n(b1 | up8(b2), cnt), u64(0)
-        end
+@inline function add_utf8_split(cnt, chr, k1::UInt128)
+    ch = u32(chr)
+    ch <= 0x7f && return (cnt + 1, k1 | shift_n(ch, cnt), u64(0))
+    dbf[] && print("add_utf_split($cnt, $(repr(ch)), $(repr(k1))")
+    if ch <= 0x7ff
+        nc = cnt + 2
+        v = get_utf8_2(ch)
+        v1, v2 = cnt == 15 ? (up15b(v), u64(v) >>> 8) : (shift_n(v, cnt), u64(0))
     elseif ch <= 0xffff
-        b1, b2, b3 = get_utf8_3(ch)
-        if (cnt & 7) == 5
-            cnt + 3, k1 | up40(b1) | up48(b2) | up56(b3), u64(0)
-        elseif (cnt & 7) == 6
-            cnt + 3, k1 | up48(b1) | up56(b2), u64(b3)
-        else
-            cnt + 3, k1 | up56(b1), u64(b2) | up8(b3)
-        end
+        nc = cnt + 3
+        v = get_utf8_3(ch)
+        v1, v2 = cnt == 13 ? (up13b(v), u64(0)) :
+                 cnt == 14 ? (up14b(v), u64(v >>> 16)) :
+                 (up15b(v), u64(v) >>> 8)
     else
         # This will always go over, may be 1, 2, 3 bytes in second word
-        b1, b2, b3, b4 = get_utf8_4(ch)
-        if (cnt & 7) == 5
-            cnt + 4, k1 | up40(b1) | up48(b2) | up56(b3), u64(b4)
-        elseif (cnt & 7) == 6
-            cnt + 4, k1 | up48(b1) | up56(b2), u64(b3) | up8(b4)
-        else
-            cnt + 4, k1 | up56(b1), u64(b2) | up8(b3) | up16(b4)
-        end
+        nc = cnt + 4
+        v = get_utf8_4(ch)
+        dbf[] && println(" : cnt=$cnt, v=$(repr(v))")
+        v1, v2 = cnt == 13 ? (up13b(v), u64(v) >>> 24) :
+                 cnt == 14 ? (up14b(v), u64(v) >>> 16) :
+                 (up15b(v), u64(v) >>> 8)
     end
+    dbf[] && println(" -> ($nc, $(repr(v1)) => $(repr(k1|v1)), $(repr(v2)))")
+    return (nc, k1 | v1, v2)
 end
 
 #-----------------------------------------------------------------------------
 
 # AbstractString MurmurHash3, converts to UTF-8 on the fly
 function mmhash128_8_c(str::AbstractString, seed::UInt32)
-    k1 = k2 = u64(0)
+    k1 = UInt128(0)
     h1 = h2 = u64(seed)
     cnt = len = 0
     @inbounds for ch in str
-        if cnt < 5
-            cnt, k1 = add_utf8(cnt, u32(ch), k1)
-        elseif cnt < 8
-            cnt, x1, x2 = add_utf8_split(cnt, u32(ch), k1)
-        elseif cnt < 13
-            cnt, k2 = add_utf8(cnt, u32(ch), k2)
+        if cnt < 13
+            cnt, k1 = add_utf8(cnt, ch, k1)
+            if cnt == 16
+                h1, h2 = mhblock(h1, h2, k1)
+                k1 = 0%UInt128
+                len += 16
+                cnt = 0
+            end
         else
-            cnt, k2, k3 = add_utf8_split(cnt, u32(ch), k2)
+            cnt, k1, k2 = add_utf8_split(cnt, ch, k1)
             # When k1 and k2 are full, then hash another block
             if cnt > 15
-                h1, h2 = mhblock(h1, h2, k1, k2)
-                k1 = k3
-                k2 = u64(0)
+                h1, h2 = mhblock(h1, h2, k1)
+                k1 = k2%UInt128
                 len += 16
                 cnt &= 15
             end
@@ -224,8 +250,8 @@ function mmhash128_8_c(str::AbstractString, seed::UInt32)
     end
     # We should now have characters in k1 and k2, and total length in len
     if cnt != 0
-        h1 = mhtail1(h1, k1)
-        cnt > 8 && (h2 = mhtail2(h2, k2))
+        h1 = mhtail1(h1, u64(k1))
+        cnt > 8 && (h2 = mhtail2(h2, u64(k1>>>64)))
     end
     mhfin(len + cnt, h1, h2)
 end
@@ -399,21 +425,15 @@ function mmhash128_4(s::AbstractString, seed::UInt32)
     @preserve str mmhash128_4(sizeof(str), pointer(str), seed)
 end
 
-@inline shift_n_32(v, n) = u32(v) << (((n & 7)%UInt)<<3)
-
-
 @inline function get_utf8(cnt, ch)
     if ch <= 0x7f
         cnt + 1, u32(ch)
     elseif ch <= 0x7ff
-        b1, b2 = get_utf8_2(ch)
-        cnt + 2, mergebytes(b1, b2)
+        cnt + 2, get_utf8_2(ch)
     elseif ch <= 0xffff
-        b1, b2, b3 = get_utf8_3(ch)
-        cnt + 3, mergebytes(b1, b2, b3)
+        cnt + 3, get_utf8_3(ch)
     else
-        b1, b2, b3, b4 = get_utf8_4(ch)
-        cnt + 4, mergebytes(b1, b2, b3, b4)
+        cnt + 4, get_utf8_4(ch)
     end
 end
 
