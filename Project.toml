@@ -4,7 +4,7 @@ keywords = ["Strings", "Hashing"]
 license = "MIT"
 name = "MurmurHash3"
 uuid = "b10b62ed-fbae-5ea5-b934-abaf0477b71d"
-version = "1.1.1"
+version = "1.2.0"
 
 [deps]
 
