@@ -289,9 +289,9 @@ end
 function mmhash128_8_u(len::Integer, unaligned_pnt::Ptr, seed::UInt32)
     # Should optimize handling of short (< 16 byte) unaligned strings
     ulp = reinterpret(UInt, unaligned_pnt)
-    pnt = reinterpret(Ptr{UInt64}, ulp & ~u64(7))
-    fin = reinterpret(Ptr{UInt64}, (ulp + len + 0x7) & ~u64(7)) - 8
-    shft = (ulp & u64(7))<<3
+    pnt = reinterpret(Ptr{UInt64}, ulp & ~UInt(7))
+    fin = reinterpret(Ptr{UInt64}, (ulp + len + 0x7) & ~UInt(7)) - 8
+    shft = (ulp & UInt(7))<<3
     h1 = h2 = u64(seed)
     k1 = unsafe_load(pnt) # Pick up first 1-7 bytes
     k2 = u64(0)
