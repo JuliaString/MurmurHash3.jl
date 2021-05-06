@@ -41,10 +41,10 @@ const c2 = 0x4cf5ad432745937f
 @inline mhtail2(h2, k2) = xor(h2, rotl33(k2 * c2) * c1)
 
 @inline function mhblock(h1, h2, k1, k2)
-    dbf[] && print("mhblock($(repr(h1)), $(repr(h2)), $(repr(k1)), $(repr(k2))) => ")
+    # dbf[] && print("mhblock($(repr(h1)), $(repr(h2)), $(repr(k1)), $(repr(k2))) => ")
     h1 = (rotl27(mhtail1(h1, k1)) + h2) * 5 + 0x52dce729
     h2 = (rotl31(mhtail2(h2, k2)) + h1) * 5 + 0x38495ab5
-    dbf[] && println(repr(h1), ", ", repr(h2))
+    # dbf[] && println(repr(h1), ", ", repr(h2))
     h1, h2
 end
 
@@ -59,7 +59,6 @@ end
 end
 
 @inline function mhfin(len, h1, h2)
-    dbf[] && print("mhfin($len, $(repr(h1)), $(repr(h2))) => ")
     h1 = xor(h1, u64(len))
     h2 = xor(h2, u64(len))
 
@@ -70,7 +69,6 @@ end
     h2 = fmix(h2)
 
     h1 += h2
-    dbf[] && println(repr(h1), ", ", repr(h1 + h2))
     h1, h1 + h2
 end
 
@@ -182,7 +180,6 @@ end
 
 @inline function add_utf8(cnt, chr, k1::UInt128)
     ch = u32(chr)
-    dbf[] && println("add_utf($cnt, $(repr(ch)), $(repr(k1))")
     if ch <= 0x7f
         cnt + 1, k1 | shift_n(ch, cnt)
     elseif ch <= 0x7ff
@@ -197,7 +194,7 @@ end
 @inline function add_utf8_split(cnt, chr, k1::UInt128)
     ch = u32(chr)
     ch <= 0x7f && return (cnt + 1, k1 | shift_n(ch, cnt), u64(0))
-    dbf[] && print("add_utf_split($cnt, $(repr(ch)), $(repr(k1))")
+    # dbf[] && print("add_utf_split($cnt, $(repr(ch)), $(repr(k1))")
     if ch <= 0x7ff
         nc = cnt + 2
         v = get_utf8_2(ch)
@@ -212,12 +209,12 @@ end
         # This will always go over, may be 1, 2, 3 bytes in second word
         nc = cnt + 4
         v = get_utf8_4(ch)
-        dbf[] && println(" : cnt=$cnt, v=$(repr(v))")
+        # dbf[] && println(" : cnt=$cnt, v=$(repr(v))")
         v1, v2 = cnt == 13 ? (up13b(v), u64(v) >>> 24) :
                  cnt == 14 ? (up14b(v), u64(v) >>> 16) :
                  (up15b(v), u64(v) >>> 8)
     end
-    dbf[] && println(" -> ($nc, $(repr(v1)) => $(repr(k1|v1)), $(repr(v2)))")
+    # dbf[] && println(" -> ($nc, $(repr(v1)) => $(repr(k1|v1)), $(repr(v2)))")
     return (nc, k1 | v1, v2)
 end
 
@@ -292,9 +289,9 @@ end
 function mmhash128_8_u(len::Integer, unaligned_pnt::Ptr, seed::UInt32)
     # Should optimize handling of short (< 16 byte) unaligned strings
     ulp = reinterpret(UInt, unaligned_pnt)
-    pnt = reinterpret(Ptr{UInt64}, ulp & ~u64(7))
-    fin = reinterpret(Ptr{UInt64}, (ulp + len + 0x7) & ~u64(7)) - 8
-    shft = (ulp & u64(7))<<3
+    pnt = reinterpret(Ptr{UInt64}, ulp & ~UInt(7))
+    fin = reinterpret(Ptr{UInt64}, (ulp + len + 0x7) & ~UInt(7)) - 8
+    shft = (ulp & UInt(7))<<3
     h1 = h2 = u64(seed)
     k1 = unsafe_load(pnt) # Pick up first 1-7 bytes
     k2 = u64(0)
@@ -312,6 +309,8 @@ function mmhash128_8_u(len::Integer, unaligned_pnt::Ptr, seed::UInt32)
 end
 
 #----------------------------------------------------------------------------
+
+# 32-bit MurmurHash3 (see MurmurHash3_x86_32)
 
 @inline xor16(k::UInt32) = xor(k, k >>> 16)
 @inline xor13(k::UInt32) = xor(k, k >>> 13)
@@ -340,14 +339,40 @@ const d2 = 0x1b873593
     pnt, h1
 end
 
-function mmhash32(len, pnt, seed::UInt32)
-    pnt, h1 = mhbody(len >>> 2, reinterpret(Ptr{UInt32}, pnt), seed)
+@inline mhtail32(h, v) = xor(h, rotl15(v * d1) * d2)
+@inline mask32(v, res) = v & ifelse(res==1, 0x000ff, ifelse(res==2, 0x0ffff, 0xffffff))
+
+@inline function calc32(len, pnt::Ptr, seed)
     res = len & 3
-    if res != 0
-        v = unsafe_load(pnt) & ifelse(res==1, 0x000ff, ifelse(res==2, 0x0ffff, 0xffffff))
-        h1 = xor(h1, rotl15(v * d1) * d2)
+    res != 0 && (seed = mhtail32(seed, mask32(unsafe_load(pnt), res)))
+    fmix(xor(seed, u32(len)))
+end
+
+@inline function calc32(len, val::UInt32, seed)
+    res = len & 3
+    res != 0 && (seed = mhtail32(seed, mask32(val, res)))
+    fmix(xor(seed, u32(len)))
+end
+    
+
+mmhash32(len, pnt::Ptr, seed::UInt32) =
+    calc32(len, mhbody(len >>> 2, reinterpret(Ptr{UInt32}, pnt), seed)...)
+
+# length must be 0-3
+mmhash32(len, val::UInt32, seed::UInt32) = calc32(len, val, seed)
+
+# length must be 0-7
+mmhash32(len, val::UInt64, seed::UInt32) =
+    (len > 3
+     ? calc32(len, u32(val>>>32), mhblock(seed, u32(val)))
+     : calc32(len, u32(val), seed))
+
+function mmhash32(len, val::Unsigned, seed::UInt32)
+    for i = 1:(len>>>2)
+        seed = mhblock(seed, u32(val))
+        val >>>= 32
     end
-    fmix(xor(h1, u32(len)))
+    calc32(len, u32(val), seed)
 end
 
 @inline function mhfin(len, h1, h2, h3, h4)
@@ -378,11 +403,18 @@ const e2 = 0xab0e9789
 const e3 = 0x38b34ae5
 const e4 = 0xa1e38b93
 
+mhtail4_1(h, v) = xor(h, rotl15(v * e1) * e2)
+mhtail4_2(h, v) = xor(h, rotl16(v * e2) * e3)
+mhtail4_3(h, v) = xor(h, rotl17(v * e3) * e4)
+mhtail4_4(h, v) = xor(h, rotl18(v * e4) * e1)
+
+@inline mask_v32(val, left) = u32(val) & ((UInt32(1) << ((left & 3) << 3)) - 0x1)
+
 @inline function mhblock(h1, h2, h3, h4, k1, k2, k3, k4)
-    h1 = (rotl19(xor(h1, rotl15(k1 * e1) * e2)) + h2)*5 + 0x561ccd1b
-    h2 = (rotl17(xor(h2, rotl16(k2 * e2) * e3)) + h3)*5 + 0x0bcaa747
-    h3 = (rotl15(xor(h3, rotl17(k3 * e3) * e4)) + h4)*5 + 0x96cd1c35
-    h4 = (rotl13(xor(h4, rotl18(k4 * e4) * e1)) + h1)*5 + 0x32ac3b17
+    h1 = (rotl19(mhtail4_1(h1, k1)) + h2)*5 + 0x561ccd1b
+    h2 = (rotl17(mhtail4_2(h2, k2)) + h3)*5 + 0x0bcaa747
+    h3 = (rotl15(mhtail4_3(h3, k3)) + h4)*5 + 0x96cd1c35
+    h4 = (rotl13(mhtail4_4(h4, k4)) + h1)*5 + 0x32ac3b17
     h1, h2, h3, h4
 end
 
@@ -402,21 +434,81 @@ function mmhash128_4(seed::UInt32)
     up32(h) | fmix(4*seed)*4, up32(h) | h
 end
 
-function mmhash128_4(len, pnt, seed::UInt32)
-    pnt, h1, h2, h3, h4 = mhbody(len >>> 4, pnt, seed, seed, seed, seed)
+# For val that is stored in up to 32 bits, we handle it without any loops
+# len can only be 1-3 in this case
+function mmhash128_4(len::Integer, val::UInt32, seed::UInt32)
+    len == 0 && return mmhash128_4(seed)
+     mhfin(len, mhtail4_1(seed, mask_v32(val, len)), seed, seed, seed)
+end
+
+# For val that is stored in up to 64 bits, we handle it without any loops
+# len can only be 1-7 in this case
+function mmhash128_4(len::Integer, val::UInt64, seed::UInt32)
+    len == 0 && return mmhash128_4(seed)
+    mhfin(len, mhtail4_1(seed, len < 4 ? mask_v32(val, len) : u32(val)),
+          len > 4 ? mhtail4_2(seed, mask_v32(val>>>32, len)) : seed,
+          seed, seed)
+end
+
+# For val that is stored in up to 128 bits, we handle it without any loops
+# len can only be 1-15 in this case
+function mmhash128_4(len::Integer, val::UInt128, seed::UInt32)
+    len == 0 && return mmhash128_4(seed)
+    h2 = h3 = h4 = seed
+    if len > 4
+        val >>>= 32
+        h2  = mhtail4_2(h2, len < 8 ? mask_v32(val, len) : u32(val))
+        if len > 8
+            val >>>= 32
+            h3  = mhtail4_3(h3, len < 12 ? mask_v32(val, len) : u32(val))
+            len > 12 && (h4 = mhtail4_4(h4, mask_v32(val>>>32, len)))
+        end
+    end
+    mhfin(len, mhtail4_1(seed, len < 4 ? mask_v32(val, len) : u32(val)), h2, h3, h4)
+end
+
+function mmhash128_4(len::Integer, val::Unsigned, seed::UInt32)
+    h1 = h2 = h3 = h4 = seed
+    for i = 1:(len>>>4)
+        h1, h2, h3, h4 =
+            mhblock(h1, h2, h3, h4, u32(val), u32(val>>>32), u32(val>>>64), u32(val>>>96))
+        val >>>= 128
+    end
     if (left = len & 15) != 0
-        h1  = xor(h1, rotl16(unsafe_load(pnt) * e1) * e2)
+        # Pick up 32-bit
+        h1  = mhtail4_1(h1, left < 4 ? mask_v32(val, left) : u32(val))
         if left > 4
-            h2  = xor(h2, rotl16(unsafe_load(pnt+4) * e2) * e3)
+            val >>>= 32
+            h2  = mhtail4_2(h2, left < 8 ? mask_v32(val, left) : u32(val))
             if left > 8
-                h3  = xor(h3, rotl17(unsafe_load(pnt+8) * e3) * e4)
-                left > 12 && (h4  = xor(h4, rotl18(unsafe_load(pnt+12) * e4) * e1))
+                val >>>= 32
+                h3  = mhtail4_3(h3, left < 12 ? mask_v32(val, left) : u32(val))
+                left > 12 && (h4 = mhtail4_4(h4, mask_v32(val>>>32, left)))
             end
         end
     end
     mhfin(len, h1, h2, h3, h4)
 end
 
+function mmhash128_4(len::Integer, pnt::Ptr{UInt32}, seed::UInt32)
+    pnt, h1, h2, h3, h4 = mhbody(len >>> 4, pnt, seed, seed, seed, seed)
+    if (left = len & 15) != 0
+        h1  = mhtail4_1(h1, unsafe_load(pnt))
+        if left > 4
+            h2  = mhtail4_2(h2, unsafe_load(pnt+4))
+            if left > 8
+                h3  = mhtail4_3(h3, unsafe_load(pnt+8))
+                left > 12 && (h4  = mhtail4_4(h4, unsafe_load(pnt+12)))
+            end
+        end
+    end
+    mhfin(len, h1, h2, h3, h4)
+end
+
+mmhash128_4(len::Integer, pnt::Ptr, seed::UInt32) =
+    mmhash128_4(len, reinterpret(Ptr{UInt32}, pnt), seed)
+
+# Handle value stored in an unsigned value
 import Base.GC: @preserve
 
 # AbstractString MurmurHash3, converts to UTF-8 on the fly (not optimized yet!)
